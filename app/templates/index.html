@@ -1,0 +1,231 @@
+{% extends "/layout/main_layout.html" %}
+{% block content %}
+{% set page_blogs = blogs if blogs is defined else all_blogs %}
+{% set current_page = current_page | default(1) %}
+{% set total_pages = total_pages | default(1) %}
+{% set search_query = search_query | default('') %}
+{% set nlq = nlq | default('') %}
+{% set ai_search_mode = ai_search_mode | default(false) %}
+{% set search_type = search_type | default('title_content') %}
+{% set search_mode = search_mode | default(false) %}
+{% set query_field_value = nlq if ai_search_mode else search_query %}
+{% set image_ext_value = (image_ext if image_ext is defined and image_ext else '') %}
+{% set date_from_value = (date_from if date_from is defined and date_from else '') %}
+{% set date_to_value = (date_to if date_to is defined and date_to else '') %}
+<!-- Main Content -->
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <!-- Search -->
+            <form method="get" action="/blogs/search" class="mb-4" id="blogSearchForm">
+                <div class="mb-3">
+                    <label class="form-label" for="searchMode">검색 방식</label>
+                    <select class="form-select" id="searchMode" aria-label="검색 방식">
+                        <option value="search" {% if not ai_search_mode %}selected{% endif %}>일반 검색 (/search)</option>
+                        <option value="ai-search" {% if ai_search_mode %}selected{% endif %}>AI 검색 (/ai-search)</option>
+                    </select>
+                    <div class="form-text">AI 검색은 자연어 질의만 사용하며, 일반 검색의 옵션·필터와 함께 쓸 수 없습니다.</div>
+                </div>
+
+                <div class="mb-3" id="classicSearchOptions">
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search_type" id="search_title_content" value="title_content" {% if search_type == 'title_content' %}checked{% endif %}>
+                        <label class="form-check-label" for="search_title_content">제목+내용</label>
+                    </div>
+                    <div class="form-check form-check-inline">
+                        <input class="form-check-input" type="radio" name="search_type" id="search_author" value="author" {% if search_type == 'author' %}checked{% endif %}>
+                        <label class="form-check-label" for="search_author">작성자</label>
+                    </div>
+                </div>
+
+                <div class="mb-3" id="imageExtFilterContainer">
+                    <div class="mb-2">
+                        <label class="form-label">이미지 확장자(필터)</label>
+                    </div>
+                    <div class="btn-group" role="group" aria-label="이미지 확장자 필터">
+                        <input type="radio" class="btn-check" name="image_ext" id="image_ext_all" value="" autocomplete="off" {% if not image_ext_value %}checked{% endif %}>
+                        <label class="btn btn-outline-primary" for="image_ext_all">전체</label>
+
+                        <input type="radio" class="btn-check" name="image_ext" id="image_ext_jpeg" value="jpeg" autocomplete="off" {% if image_ext_value == 'jpeg' %}checked{% endif %}>
+                        <label class="btn btn-outline-primary" for="image_ext_jpeg">jpeg</label>
+
+                        <input type="radio" class="btn-check" name="image_ext" id="image_ext_jpg" value="jpg" autocomplete="off" {% if image_ext_value == 'jpg' %}checked{% endif %}>
+                        <label class="btn btn-outline-primary" for="image_ext_jpg">jpg</label>
+
+                        <input type="radio" class="btn-check" name="image_ext" id="image_ext_png" value="png" autocomplete="off" {% if image_ext_value == 'png' %}checked{% endif %}>
+                        <label class="btn btn-outline-primary" for="image_ext_png">png</label>
+
+                        <input type="radio" class="btn-check" name="image_ext" id="image_ext_none" value="none" autocomplete="off" {% if image_ext_value == 'none' %}checked{% endif %}>
+                        <label class="btn btn-outline-primary" for="image_ext_none">없음</label>
+                    </div>
+                </div>
+
+                <div class="mb-3" id="dateRangeFilterContainer">
+                    <label class="form-label">수정일 기간(필터)</label>
+                    <div class="row g-2 align-items-end">
+                        <div class="col-sm-5">
+                            <label for="date_from" class="form-label small text-muted mb-0">시작일</label>
+                            <input type="date" class="form-control" name="date_from" id="date_from" value="{{ date_from_value }}">
+                        </div>
+                        <div class="col-sm-5">
+                            <label for="date_to" class="form-label small text-muted mb-0">종료일</label>
+                            <input type="date" class="form-control" name="date_to" id="date_to" value="{{ date_to_value }}">
+                        </div>
+                    </div>
+                    <div class="form-text">확장자 필터와 함께 사용할 수 있습니다.</div>
+                </div>
+
+                <div class="input-group">
+                    <input type="search" name="{% if ai_search_mode %}nlq{% else %}q{% endif %}" id="blogSearchQuery" class="form-control form-control-lg" value="{{ query_field_value }}" aria-label="검색어" data-ai-placeholder="자연어로 질문하세요 (예: 최근 이미지가 있는 글)" data-classic-placeholder="검색어">
+                    <input type="hidden" name="page" value="1">
+                    <button type="submit" class="btn btn-primary btn-lg px-4">검색</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <div class="row justify-content-center">
+        <!-- Blog Posts (10 per page) -->
+        <div class="col-lg-8">
+            {% for blog in page_blogs %}
+            <div class="mb-4 border-bottom">
+                <h2 class="fw-bold">{{ blog.title }}</h2>
+                <p class="text-muted">Posted on {{ blog.modified_dt }} by {{ blog.author }}</p>
+                <div class="row">
+                    <div class="col-lg-8">
+                        <p class="mt-3">{{ blog.content | safe }}</p>
+                    </div>
+                    <div class="col-lg-4">
+                        <img src="{{ blog.image_loc }}" class="img-fluid" alt="Blog Image">
+                    </div>
+                </div>
+                <a href="/blogs/show/{{ blog.id }}" class="btn btn-primary mb-4">Read More</a>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Page controls (bottom) -->
+    <div class="row justify-content-center mt-4 mb-4">
+        <div class="col-lg-8">
+            <nav aria-label="블로그 목록 페이지 이동">
+                {% if ai_search_mode %}
+                {% set qparam = ('nlq=' ~ (nlq | urlencode) ~ '&') if nlq else '' %}
+                {% set fullparam = qparam %}
+                {% else %}
+                {% set qparam = ('q=' ~ search_query | urlencode ~ '&') if search_query else '' %}
+                {% set typeparam = ('search_type=' ~ search_type ~ '&') if search_type and search_type != 'title_content' else '' %}
+                {% set extparam = ('image_ext=' ~ image_ext_value ~ '&') if image_ext_value else '' %}
+                {% set fromparam = ('date_from=' ~ (date_from_value | urlencode) ~ '&') if date_from_value else '' %}
+                {% set toparam = ('date_to=' ~ (date_to_value | urlencode) ~ '&') if date_to_value else '' %}
+                {% set fullparam = qparam ~ typeparam ~ extparam ~ fromparam ~ toparam %}
+                {% endif %}
+                {% set max_pages_to_show = 10 %}
+                {% set half_range = 5 %}
+                {% set start_page = current_page - half_range %}
+                {% if start_page < 1 %}
+                    {% set start_page = 1 %}
+                {% endif %}
+                {% set end_page = start_page + max_pages_to_show - 1 %}
+                {% if end_page > total_pages %}
+                    {% set end_page = total_pages %}
+                    {% set start_page = end_page - max_pages_to_show + 1 %}
+                    {% if start_page < 1 %}
+                        {% set start_page = 1 %}
+                    {% endif %}
+                {% endif %}
+                <ul class="pagination justify-content-center mb-0">
+                    <li class="page-item {% if current_page <= 1 %}disabled{% endif %}">
+                        <a class="page-link" href="?{{ fullparam }}page={{ current_page - 1 }}" aria-label="이전">이전</a>
+                    </li>
+                    {% if start_page > 1 %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{{ fullparam }}page=1">1</a>
+                    </li>
+                    {% if start_page > 2 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                    {% endif %}
+                    {% for p in range(start_page, end_page + 1) %}
+                    <li class="page-item {% if p == current_page %}active{% endif %}">
+                        <a class="page-link" href="?{{ fullparam }}page={{ p }}">{{ p }}</a>
+                    </li>
+                    {% endfor %}
+                    {% if end_page < total_pages %}
+                    {% if end_page < total_pages - 1 %}
+                    <li class="page-item disabled">
+                        <span class="page-link">...</span>
+                    </li>
+                    {% endif %}
+                    <li class="page-item">
+                        <a class="page-link" href="?{{ fullparam }}page={{ total_pages }}">{{ total_pages }}</a>
+                    </li>
+                    {% endif %}
+                    <li class="page-item {% if current_page >= total_pages %}disabled{% endif %}">
+                        <a class="page-link" href="?{{ fullparam }}page={{ current_page + 1 }}" aria-label="다음">다음</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+<script>
+    (function () {
+        const form = document.getElementById('blogSearchForm');
+        const modeSelect = document.getElementById('searchMode');
+        const queryInput = document.getElementById('blogSearchQuery');
+        const classicOptions = document.getElementById('classicSearchOptions');
+        const extContainer = document.getElementById('imageExtFilterContainer');
+        const dateContainer = document.getElementById('dateRangeFilterContainer');
+
+        const setClassicControlsEnabled = (enabled) => {
+            [classicOptions, extContainer, dateContainer].forEach((el) => {
+                if (!el) return;
+                el.querySelectorAll('input').forEach((inp) => {
+                    inp.disabled = !enabled;
+                });
+                el.style.opacity = enabled ? '1' : '0.45';
+                el.style.pointerEvents = enabled ? 'auto' : 'none';
+            });
+        };
+
+        const applySearchMode = () => {
+            const ai = modeSelect && modeSelect.value === 'ai-search';
+            if (form) {
+                form.action = ai ? '/blogs/ai-search' : '/blogs/search';
+            }
+            if (queryInput) {
+                queryInput.name = ai ? 'nlq' : 'q';
+                const ph = ai ? queryInput.dataset.aiPlaceholder : queryInput.dataset.classicPlaceholder;
+                if (ph) queryInput.placeholder = ph;
+            }
+            setClassicControlsEnabled(!ai);
+        };
+
+        if (modeSelect) {
+            modeSelect.addEventListener('change', applySearchMode);
+        }
+        applySearchMode();
+
+        const updateAuthorFilters = () => {
+            const authorRadio = document.getElementById('search_author');
+            if (!authorRadio || !modeSelect || modeSelect.value === 'ai-search') return;
+            [extContainer, dateContainer].forEach((el) => {
+                if (!el) return;
+                el.style.opacity = '1';
+                el.style.pointerEvents = 'auto';
+            });
+        };
+
+        document.querySelectorAll('input[name="search_type"]').forEach((el) => {
+            el.addEventListener('change', updateAuthorFilters);
+        });
+        updateAuthorFilters();
+    })();
+</script>
+{% endblock %}
+<!-- End of Main Content -->
+
+
+

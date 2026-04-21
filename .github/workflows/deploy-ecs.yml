@@ -1,0 +1,91 @@
+name: Deploy to ECS
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY_APP: proj-fastapi
+  ECR_REPOSITORY_WORKER: proj-fastapi-worker
+  ECS_CLUSTER: proj-fastapi-cluster
+  ECS_SERVICE_APP: proj-fastapi-app-svc
+  ECS_SERVICE_WORKER: proj-fastapi-worker-svc
+  ECS_TASKDEF_APP: deploy/aws/taskdef-fastapi.json
+  ECS_TASKDEF_WORKER: deploy/aws/taskdef-worker.json
+  CONTAINER_NAME_APP: fastapi
+  CONTAINER_NAME_WORKER: outbox-worker
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push app image
+        id: build-app-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f deploy/aws/Dockerfile.app -t $ECR_REGISTRY/$ECR_REPOSITORY_APP:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_APP:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY_APP:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build and push worker image
+        id: build-worker-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f deploy/aws/Dockerfile.worker -t $ECR_REGISTRY/$ECR_REPOSITORY_WORKER:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY_WORKER:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY_WORKER:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Render app task definition
+        id: task-def-app
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASKDEF_APP }}
+          container-name: ${{ env.CONTAINER_NAME_APP }}
+          image: ${{ steps.build-app-image.outputs.image }}
+
+      - name: Deploy app ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def-app.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_APP }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
+
+      - name: Render worker task definition
+        id: task-def-worker
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: ${{ env.ECS_TASKDEF_WORKER }}
+          container-name: ${{ env.CONTAINER_NAME_WORKER }}
+          image: ${{ steps.build-worker-image.outputs.image }}
+
+      - name: Deploy worker ECS service
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.task-def-worker.outputs.task-definition }}
+          service: ${{ env.ECS_SERVICE_WORKER }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
