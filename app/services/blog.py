@@ -6,9 +6,10 @@ from app.core.config import get_settings
 from app.db.crud import BlogCrud, OutboxCrud
 from app.db.models import Blog
 from app.db.schemas import BlogCreate, BlogUpdate, BlogRead
+from app.search.ai.nlq_core import BlogNLQContext
 from app.search.ai.nlq_graph import get_blog_nlq_graph
 from app.search.blog_queries import BlogSearchFilters, ImageExt
-from app.search import search_blogs_es, ai_search_blogs_es, convert_blog_to_document
+from app.search import search_blogs_es, convert_blog_to_document
 from app.utils import util
 import aiofiles.os as aios
 import aiofiles
@@ -87,26 +88,18 @@ class BlogService:
 
         graph = get_blog_nlq_graph()
 
-        state = await graph.ainvoke({"nlq": nlq})
+        state = await graph.ainvoke(
+            {"nlq": nlq, "page": page}, context=BlogNLQContext(es=es)
+        )
         error = state.get("error")
         if error:
             raise HTTPException(detail=error, status_code=400)
 
-        parsed = state.get("parsed")
-        if parsed is None:
-            raise HTTPException(detail="검색 파라미터 추출 실패", status_code=400)
+        total_pages = state.get("total_pages", 0)
+        current_page = state.get("current_page", page)
+        search_results = state.get("search_results", [])
 
-        # logger.error(f"{parsed.filters}")
-        # logger.error(f"{parsed.search_type}")
-        # logger.error(f"{parsed.q}")
-        try:
-            return await ai_search_blogs_es(
-                es,
-                parsed=parsed,
-                page=page,
-            )
-        except ValueError:
-            raise HTTPException(detail="입력 형식 오류", status_code=400)
+        return search_results, total_pages, current_page
 
     @staticmethod
     async def upload_file(

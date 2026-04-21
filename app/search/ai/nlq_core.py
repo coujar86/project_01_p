@@ -1,11 +1,13 @@
 from __future__ import annotations
 from functools import lru_cache
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, TypedDict
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
+from elasticsearch import AsyncElasticsearch
 from app.core.config import get_settings
 from app.search.blog_queries import ParsedAIBlogSearch
 
@@ -69,14 +71,26 @@ NLQ_LLM_MODEL = "gpt-4.1-mini"
 NLQ_LLM_TEMPERATURE = 0
 
 
+@dataclass
+class BlogNLQContext:
+    es: AsyncElasticsearch
+
+
 class BlogNLQState(TypedDict, total=False):
     nlq: Annotated[str, "사용자가 입력한 자연어 검색 요청"]
-    # current_date: Annotated[str, "프롬프트에 전달할 현재 시각 (YYYY-MM-DD HH:mm:ss)"]
-    current_date: Annotated[datetime, "프롬프트에 전달할 현재 시각"]
+    current_date: Annotated[datetime, "날짜 필터 해석 기준 시각"]
     parsed: Annotated[ParsedAIBlogSearch, "LLM이 추출한 최종 구조화 검색 파라미터"]
+    es_query: Annotated[dict, "Elasticsearch 쿼리"]
 
+    page: Annotated[int, "검색 요청 시 사용자가 지정한 페이지 번호"]
+
+    total_pages: Annotated[int, "전체 페이지 수"]
+    current_page: Annotated[int, "유효 범위로 보정된 현재 페이지 번호"]
+    search_results: Annotated[list, "검색 실행 후 반환된 블로그 결과 리스트"]
+
+    next_action: Annotated[str, "라우팅 경로 설정"]
     validated: Annotated[bool, "파싱 결과에 대한 서버 검증 완료 여부"]
-    error: Annotated[str, "파싱 또는 검증 과정에서 발생한 에러 메시지"]
+    error: Annotated[str, "그래프 처리 중 발생한 에러 메시지"]
 
 
 class BlogNLQ:

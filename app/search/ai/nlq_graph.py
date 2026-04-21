@@ -2,7 +2,8 @@ from datetime import datetime
 from functools import lru_cache
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.state import CompiledStateGraph
-from app.search.ai.nlq_core import BlogNLQState, get_blog_nlq
+from app.search.ai.nlq_core import BlogNLQContext, BlogNLQState, get_blog_nlq
+from app.search.blog_search import ai_search_blogs_es
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -102,16 +103,42 @@ async def validate_parsed_result(state: BlogNLQState) -> BlogNLQState:
     return {**state, "validated": True}
 
 
+async def execute_search_node(state: BlogNLQState, runtime) -> BlogNLQState:
+    if state.get("error") or not state.get("validated"):
+        return {**state, "validated": False}
+
+    es = runtime.context.es
+    parsed = state["parsed"]
+    page = state["page"]
+
+    try:
+        search_results, total_pages, current_page = await ai_search_blogs_es(
+            es=es, parsed=parsed, page=page
+        )
+        logger.error(f"[pages]: {total_pages}, {current_page}")
+        logger.error(f"[RES]: {search_results}")
+
+        return {
+            **state,
+            "search_results": search_results,
+            "total_pages": total_pages,
+            "current_page": current_page,
+        }
+    except Exception as e:
+        return {**state, "error": f"ES 검색 중 오류 발생: {str(e)}"}
+
+
 @lru_cache
 def get_blog_nlq_graph() -> CompiledStateGraph:
-    workflow = StateGraph(BlogNLQState)
-
+    workflow = StateGraph(BlogNLQState, context_schema=BlogNLQContext)
     workflow.add_node("prepare_input", prepare_prompt_input)
     workflow.add_node("extract_params", extract_search_params)
     workflow.add_node("validate_result", validate_parsed_result)
+    workflow.add_node("execute_search", execute_search_node)
 
     workflow.add_edge(START, "prepare_input")
     workflow.add_edge("prepare_input", "extract_params")
     workflow.add_edge("extract_params", "validate_result")
-    workflow.add_edge("validate_result", END)
+    workflow.add_edge("validate_result", "execute_search")
+    workflow.add_edge("execute_search", END)
     return workflow.compile()

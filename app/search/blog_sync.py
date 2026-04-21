@@ -12,13 +12,6 @@ embeddings = OpenAIEmbeddings(
 )
 
 
-# def embedding_text(text: str) -> list[float]:
-#     try:
-#         return embeddings.embed_query(text)
-#     except Exception:
-#         raise
-
-
 async def embedding_text(text: str) -> list[float]:
     try:
         return await embeddings.aembed_query(text)
