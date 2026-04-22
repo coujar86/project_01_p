@@ -71,6 +71,53 @@ NLQ_LLM_MODEL = "gpt-4.1-mini"
 NLQ_LLM_TEMPERATURE = 0
 
 
+CORRECTION_PROMPT = """
+당신은 검색 쿼리 교정 전문가입니다. 
+기존 쿼리가 시스템 검증을 통과하지 못했거나 검색 결과가 없었습니다.
+사용자의 의도를 유지하면서, 조건(filters)만 수정하여 문제를 해결하세요.
+
+[입력]
+- 에러 내용: {error}
+- 기존 쿼리(JSON): {parsed}
+
+[출력 규칙]
+- 반드시 지정된 JSON 형식만 출력합니다.
+- 출력 JSON 구조는 반드시 기존 쿼리와 동일한 스키마를 유지합니다.
+- 설명, 주석, 코드블록, 마크다운, 추가 문장은 절대 출력하지 않습니다.
+- 존재하지 않는 필드를 새로 추가하지 않습니다.
+- search_type 및 검색어(q)는 변경하지 않습니다.
+
+[교정 규칙]
+- 가능한 최소한의 변경만 수행합니다.
+- 하나의 조건 수정으로 해결 가능하면 다른 조건은 유지합니다.
+- 더 이상 수정할 수 있는 필터 조건이 없다면 기존 쿼리를 그대로 유지합니다.
+
+[교정 가이드]
+1. 날짜 오류
+- 시작 날짜(date_from)가 종료 날짜(date_to)보다 늦으면 date_from을 제거합니다.
+- 시작 날짜가 현재 시각보다 미래이면 현재 시각으로 보정합니다.
+- 날짜 범위가 너무 좁아 검색 결과가 없을 가능성이 있으면 date_from을 제거하거나 더 이른 과거 시점으로 완화합니다.
+
+2. 검색 결과 없음
+- 필터가 과도하게 제한적이면 필터를 일부 제거하거나 완화합니다.
+- 필터 조건은 한 번에 최대 하나만 수정합니다.
+- image_ext가 null이 아니면 image_ext를 null로 변경합니다. 이 경우 date_from은 변경하지 않습니다.
+- image_ext가 null이고 date_from이 null이 아니면 date_from를 1일 더 과거 시점으로 완화합니다. date_to는 변경하지 않습니다.
+- image_ext가 null이고 date_from도 null이면 기존 쿼리를 그대로 유지합니다.
+
+3. image_ext 규칙
+- 반드시 "jpg", "jpeg", "png", "none", null 중 하나만 사용합니다.
+- '이미지 없음' 의미이면 "none" 으로 설정합니다.
+- 유효하지 않은 값은 null로 변경합니다.
+
+[시간 정보]
+- 현재 시간은 {current_date} 입니다.
+- 모든 날짜는 ISO 8601 형식으로 반환합니다.
+
+{format_instructions}
+"""
+
+
 @dataclass
 class BlogNLQContext:
     es: AsyncElasticsearch
@@ -79,18 +126,19 @@ class BlogNLQContext:
 class BlogNLQState(TypedDict, total=False):
     nlq: Annotated[str, "사용자가 입력한 자연어 검색 요청"]
     current_date: Annotated[datetime, "날짜 필터 해석 기준 시각"]
-    parsed: Annotated[ParsedAIBlogSearch, "LLM이 추출한 최종 구조화 검색 파라미터"]
-    es_query: Annotated[dict, "Elasticsearch 쿼리"]
+    parsed: Annotated[ParsedAIBlogSearch, "LLM이 nlq로부터 추출한 구조화 검색 파라미터"]
 
     page: Annotated[int, "검색 요청 시 사용자가 지정한 페이지 번호"]
-
     total_pages: Annotated[int, "전체 페이지 수"]
     current_page: Annotated[int, "유효 범위로 보정된 현재 페이지 번호"]
     search_results: Annotated[list, "검색 실행 후 반환된 블로그 결과 리스트"]
 
-    next_action: Annotated[str, "라우팅 경로 설정"]
-    validated: Annotated[bool, "파싱 결과에 대한 서버 검증 완료 여부"]
+    hitl_required: Annotated[bool, "검색 의미 변경 전 사용자 확인이 필요한지 여부"]
+    user_decision: Annotated[str, "수정 제안에 대한 사용자 응답 결과"]
+
+    revision_count: Annotated[int, "parsed 교정 횟수"]
     error: Annotated[str, "그래프 처리 중 발생한 에러 메시지"]
+    next_action: Annotated[str, "라우팅 경로 설정"]
 
 
 class BlogNLQ:
@@ -116,6 +164,32 @@ class BlogNLQ:
         )
 
 
+class BlogNLQCorrection:
+    def __init__(self) -> None:
+        self.parser = PydanticOutputParser(pydantic_object=ParsedAIBlogSearch)
+        self.prompt = ChatPromptTemplate.from_messages([("system", CORRECTION_PROMPT)])
+        self.llm = ChatOpenAI(
+            model_name=NLQ_LLM_MODEL,
+            temperature=NLQ_LLM_TEMPERATURE,
+            api_key=settings.openai_api_key,
+        )
+
+    @property
+    def runnable(self) -> Runnable:
+        return (
+            self.prompt.partial(
+                format_instructions=self.parser.get_format_instructions()
+            )
+            | self.llm
+            | self.parser
+        )
+
+
 @lru_cache
 def get_blog_nlq() -> BlogNLQ:
     return BlogNLQ()
+
+
+@lru_cache
+def get_blog_nlq_correction() -> BlogNLQCorrection:
+    return BlogNLQCorrection()
