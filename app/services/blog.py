@@ -2,8 +2,6 @@ from typing import Literal
 from langgraph.types import Command
 from elasticsearch import AsyncElasticsearch
 from fastapi import UploadFile, HTTPException
-
-# from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.core.config import get_settings
@@ -22,15 +20,6 @@ import os
 
 logger = get_logger(__name__)
 settings = get_settings()
-
-
-# class AISearchResult(BaseModel):
-#     search_results: list = Field(default_factory=list)
-#     total_pages: int
-#     current_page: int
-#     review_required: bool
-#     review_payload: dict | None = None
-#     thread_id: str | None = None
 
 
 class BlogService:
@@ -73,6 +62,7 @@ class BlogService:
         date_to: str | None = None,
         page: int,
     ) -> tuple[list, int, int]:
+        """일반 검색"""
         if not 1 <= page <= settings.MAX_PAGE_SEARCH:
             raise HTTPException(detail="페이지 범위 오류", status_code=400)
         try:
@@ -97,6 +87,7 @@ class BlogService:
         page: int,
         thread_id: str,
     ) -> dict:
+        """자연어 검색"""
         if not 1 <= page <= settings.MAX_PAGE_AI_SEARCH:
             raise HTTPException(detail="페이지 범위 오류", status_code=400)
 
@@ -145,6 +136,7 @@ class BlogService:
         thread_id: str,
         page: int,
     ) -> dict:
+        """HITL 이후 실행"""
         if not 1 <= page <= settings.MAX_PAGE_AI_SEARCH:
             raise HTTPException(detail="페이지 범위 오류", status_code=400)
 

@@ -19,7 +19,7 @@ blog_nlq_correction = get_blog_nlq_correction()
 
 
 MAX_REVISION_COUNT = 3
-ALLOWED_MSGPACK_MODULES = [("app.search.blog_queries", "ParsedAIBlogSearch")]
+# ALLOWED_MSGPACK_MODULES = [("app.search.blog_queries", "ParsedAIBlogSearch")]
 INVALID_Q_SET = {
     "글",
     "게시글",
@@ -34,7 +34,7 @@ INVALID_Q_SET = {
 
 
 async def prepare_prompt_input(state: BlogNLQState) -> BlogNLQState:
-    logger.error("========================")
+    # logger.debug("========================")
     nlq = state.get("nlq", "").strip()
     if not nlq:
         return {**state, "error": "검색어가 비어 있습니다."}
@@ -63,16 +63,16 @@ async def extract_search_params(state: BlogNLQState) -> BlogNLQState:
         parsed = await blog_nlq.runnable.ainvoke(
             {"nlq": nlq, "current_date": current_date.strftime("%Y-%m-%d %H:%M:%S")}
         )
-        logger.error(f"[HITL] parsed generated: {parsed}")
+        # logger.debug(f"[HITL] parsed generated: {parsed}")
         return {**state, "parsed": parsed}
     except Exception as e:
         return {**state, "error": f"LLM 파싱 실패: {str(e)}"}
 
 
 async def validate_parsed_result(state: BlogNLQState) -> BlogNLQState:
-    logger.error(
-        f"[HITL] validate_parsed_result start | is_corrected={state.get('is_corrected')}"
-    )
+    # logger.debug(
+    #    f"[HITL] validate_parsed_result start | is_corrected={state.get('is_corrected')}"
+    # )
     if state.get("error"):
         return {**state, "review_required": False, "next_action": "end"}
 
@@ -108,7 +108,7 @@ async def validate_parsed_result(state: BlogNLQState) -> BlogNLQState:
             and filters.date_to
             and filters.date_from > filters.date_to
         ):
-            logger.error("[HITL] validation failed -> suggest_revision")
+            # logger.debug("[HITL] validation failed -> suggest_revision")
             return {
                 **state,
                 "review_required": False,
@@ -126,18 +126,18 @@ async def validate_parsed_result(state: BlogNLQState) -> BlogNLQState:
             }
 
     if state["is_corrected"]:  # corrected 가 검사된 경우
-        logger.error(
-            "[HITL] corrected validated -> back to suggest_revision (for human_review)"
-        )
+        # logger.debug(
+        #     "[HITL] corrected validated -> back to suggest_revision (for human_review)"
+        # )
         return {**state, "next_action": "suggest_revision"}
 
+    # logger.debug("[HITL] validation passed -> execute_search")
     # extract_params 에서 생성된 응답이 바로 검사를 통과한 경우 (revision 불필요)
-    logger.error("[HITL] validation passed -> execute_search")
     return {**state, "next_action": "execute_search"}
 
 
 async def execute_search(state: BlogNLQState, runtime) -> BlogNLQState:
-    logger.error("[HITL] execute_search start")
+    # logger.debug("[HITL] execute_search start")
     es = runtime.context.es
     parsed = state.get("parsed")
     page = state.get("page", 1)
@@ -146,8 +146,7 @@ async def execute_search(state: BlogNLQState, runtime) -> BlogNLQState:
         search_results, total_pages, current_page = await ai_search_blogs_es(
             es=es, parsed=parsed, page=page
         )
-        logger.error(f"[HITL] search result count: {len(search_results)}")
-        logger.error(f"[pages]: {total_pages}, {current_page}")
+        # logger.debug(f"[HITL] search result count: {len(search_results)}")
 
         return {
             **state,
@@ -166,9 +165,9 @@ async def execute_search(state: BlogNLQState, runtime) -> BlogNLQState:
 
 
 async def suggest_revision(state: BlogNLQState) -> BlogNLQState:
-    logger.error(
-        f"[HITL] suggest_revision start | is_corrected={state.get('is_corrected')} | revision_count={state.get('revision_count',0)}"
-    )
+    # logger.debug(
+    #     f"[HITL] suggest_revision start | is_corrected={state.get('is_corrected')} | revision_count={state.get('revision_count',0)}"
+    # )
     parsed = state.get("parsed")
     if parsed is None:
         return {
@@ -187,7 +186,7 @@ async def suggest_revision(state: BlogNLQState) -> BlogNLQState:
         }
 
     count = state.get("revision_count", 0)
-    logger.error(f"[HITL] revision_count: {count}")
+    # logger.debug(f"[HITL] revision_count: {count}")
     if count >= MAX_REVISION_COUNT:
         return {
             **state,
@@ -204,9 +203,8 @@ async def suggest_revision(state: BlogNLQState) -> BlogNLQState:
                 "current_date": state["current_date"].strftime("%Y-%m-%d %H:%M:%S"),
             }
         )
-        logger.error(f"[HITL] corrected generated: {corrected}")
-
-        logger.error("[HITL] corrected -> validate_result")
+        # logger.debug(f"[HITL] corrected generated: {corrected}")
+        # logger.debug("[HITL] corrected -> validate_result")
         return {
             **state,
             "parsed": corrected,
@@ -226,7 +224,7 @@ async def suggest_revision(state: BlogNLQState) -> BlogNLQState:
 
 
 async def analyze_search_result(state: BlogNLQState) -> BlogNLQState:
-    logger.error("[HITL] analyze_search_result start")
+    # logger.debug("[HITL] analyze_search_result start")
     if state.get("error"):
         return {**state, "next_action": "end"}
 
@@ -234,7 +232,7 @@ async def analyze_search_result(state: BlogNLQState) -> BlogNLQState:
     if search_results:
         return {**state, "next_action": "end"}
 
-    logger.error("[HITL] search empty -> suggest_revision")
+    # logger.debug("[HITL] search empty -> suggest_revision")
     return {
         **state,
         "error": "검색 결과가 없습니다. 필터 조건을 완화해야 합니다.",
@@ -243,12 +241,10 @@ async def analyze_search_result(state: BlogNLQState) -> BlogNLQState:
 
 
 async def human_review(state: BlogNLQState) -> BlogNLQState:
-    logger.error("[HITL] human_review start")
     parsed = state.get("parsed")
 
     user_decision = interrupt(parsed.model_dump())
-    logger.error(f"[HITL] human decision: {user_decision}")
-
+    # logger.debug(f"[HITL] human decision: {user_decision}")
     if user_decision == "approve":
         logger.error("[HITL] human approved -> execute_search")
         return {
@@ -341,8 +337,6 @@ def get_blog_nlq_graph() -> CompiledStateGraph:
         {"suggest_revision": "suggest_revision", "end": END},
     )
 
-    memory = MemorySaver(
-        # serde_kwargs={"allowed_msgpack_modules": ALLOWED_MSGPACK_MODULES}
-    )
+    memory = MemorySaver()
 
     return workflow.compile(checkpointer=memory)
