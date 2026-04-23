@@ -133,11 +133,13 @@ class BlogNLQState(TypedDict, total=False):
     current_page: Annotated[int, "유효 범위로 보정된 현재 페이지 번호"]
     search_results: Annotated[list, "검색 실행 후 반환된 블로그 결과 리스트"]
 
-    hitl_required: Annotated[bool, "검색 의미 변경 전 사용자 확인이 필요한지 여부"]
     user_decision: Annotated[str, "수정 제안에 대한 사용자 응답 결과"]
+    review_required: Annotated[bool, "HITL 필요 여부"]
 
+    is_corrected: Annotated[bool, "현재 parsed가 correction을 통해 생성된 값인지 여부"]
     revision_count: Annotated[int, "parsed 교정 횟수"]
-    error: Annotated[str, "그래프 처리 중 발생한 에러 메시지"]
+
+    error: Annotated[str | None, "그래프 처리 중 발생한 에러 메시지"]
     next_action: Annotated[str, "라우팅 경로 설정"]
 
 

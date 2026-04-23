@@ -21,6 +21,7 @@ from app.auth.dependencies import get_user_id, get_user_id_optional
 from app.core.client import get_es
 from app.services.blog import BlogService
 from app.utils.timer import ElapsedTime
+import uuid
 
 settings = get_settings()
 router = APIRouter(prefix="/blogs", tags=["blogs"])
@@ -149,19 +150,90 @@ async def ai_search_blogs(
     nlq = nlq.strip()
 
     try:
-        blogs, total_pages, current_page = await BlogService.ai_search_blogs(
+        thread_id = str(uuid.uuid4())
+        result = await BlogService.ai_search_blogs(
             es,
             nlq=nlq,
             page=page,
+            thread_id=thread_id,
         )
+
+        if result.get("review_required"):
+            return templates.TemplateResponse(
+                request=request,
+                name="human_review.html",
+                context={
+                    "user_id": user_id,
+                    "thread_id": result.get("thread_id"),
+                    "review_payload": result.get("review_payload"),
+                    "nlq": nlq,
+                    "page": page,
+                },
+            )
+
         return templates.TemplateResponse(
             request=request,
             name="index.html",
             context={
                 "user_id": user_id,
-                "blogs": blogs,
-                "current_page": current_page,
-                "total_pages": total_pages,
+                "blogs": result.get("search_results", []),
+                "current_page": result.get("current_page", page),
+                "total_pages": result.get("total_pages", 0),
+                "search_query": "",
+                "nlq": nlq,
+                "search_type": "title_content",
+                "image_ext": None,
+                "date_from": "",
+                "date_to": "",
+                "search_mode": True,
+                "ai_search_mode": True,
+            },
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        return RedirectResponse("/blogs/", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/ai-search/review")
+async def review_ai_search_blogs(
+    request: Request,
+    thread_id: str = Form(...),
+    human_decision: str = Form(...),
+    nlq: str = Form(""),
+    page: int = Form(1),
+    user_id: int | None = Depends(get_user_id_optional),
+    es=Depends(get_es),
+):
+    try:
+        result = await BlogService.resume_ai_search_blogs(
+            es,
+            human_decision=human_decision,
+            thread_id=thread_id,
+            page=page,
+        )
+
+        if result.get("review_required"):
+            return templates.TemplateResponse(
+                request=request,
+                name="human_review.html",
+                context={
+                    "user_id": user_id,
+                    "thread_id": result.get("thread_id"),
+                    "review_payload": result.get("review_payload"),
+                    "nlq": nlq,
+                    "page": page,
+                },
+            )
+
+        return templates.TemplateResponse(
+            request=request,
+            name="index.html",
+            context={
+                "user_id": user_id,
+                "blogs": result.get("search_results", []),
+                "current_page": result.get("current_page", page),
+                "total_pages": result.get("total_pages", 0),
                 "search_query": "",
                 "nlq": nlq,
                 "search_type": "title_content",

@@ -1,5 +1,9 @@
+from typing import Literal
+from langgraph.types import Command
 from elasticsearch import AsyncElasticsearch
 from fastapi import UploadFile, HTTPException
+
+# from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.core.config import get_settings
@@ -18,6 +22,15 @@ import os
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+
+# class AISearchResult(BaseModel):
+#     search_results: list = Field(default_factory=list)
+#     total_pages: int
+#     current_page: int
+#     review_required: bool
+#     review_payload: dict | None = None
+#     thread_id: str | None = None
 
 
 class BlogService:
@@ -82,24 +95,95 @@ class BlogService:
         *,
         nlq: str,
         page: int,
-    ) -> tuple[list, int, int]:
+        thread_id: str,
+    ) -> dict:
         if not 1 <= page <= settings.MAX_PAGE_AI_SEARCH:
             raise HTTPException(detail="페이지 범위 오류", status_code=400)
 
         graph = get_blog_nlq_graph()
+        config = {"configurable": {"thread_id": thread_id}}
 
-        state = await graph.ainvoke(
-            {"nlq": nlq, "page": page}, context=BlogNLQContext(es=es)
+        result = await graph.ainvoke(
+            {"nlq": nlq, "page": page},
+            config=config,
+            context=BlogNLQContext(es=es),
         )
-        error = state.get("error")
+
+        interrupts = result.get("__interrupt__", [])
+        if interrupts:
+            interrupt_ = interrupts[0]
+            review_payload = (
+                interrupt_.value if hasattr(interrupt_, "value") else interrupt_
+            )
+            return {
+                "search_results": [],
+                "total_pages": 0,
+                "current_page": page,
+                "review_required": True,
+                "review_payload": review_payload,
+                "thread_id": thread_id,
+            }
+
+        error = result.get("error")
         if error:
             raise HTTPException(detail=error, status_code=400)
 
-        total_pages = state.get("total_pages", 0)
-        current_page = state.get("current_page", page)
-        search_results = state.get("search_results", [])
+        return {
+            "search_results": result.get("search_results", []),
+            "total_pages": result.get("total_pages", 0),
+            "current_page": result.get("current_page", page),
+            "review_required": False,
+            "review_payload": None,
+            "thread_id": thread_id,
+        }
 
-        return search_results, total_pages, current_page
+    @staticmethod
+    async def resume_ai_search_blogs(
+        es: AsyncElasticsearch,
+        *,
+        human_decision: Literal["approve", "reject"],
+        thread_id: str,
+        page: int,
+    ) -> dict:
+        if not 1 <= page <= settings.MAX_PAGE_AI_SEARCH:
+            raise HTTPException(detail="페이지 범위 오류", status_code=400)
+
+        graph = get_blog_nlq_graph()
+        config = {"configurable": {"thread_id": thread_id}}
+
+        result = await graph.ainvoke(
+            Command(resume=human_decision),
+            config=config,
+            context=BlogNLQContext(es=es),
+        )
+
+        interrupts = result.get("__interrupt__", [])
+        if interrupts:
+            interrupt_ = interrupts[0]
+            review_payload = (
+                interrupt_.value if hasattr(interrupt_, "value") else interrupt_
+            )
+            return {
+                "search_results": [],
+                "total_pages": 0,
+                "current_page": page,
+                "review_required": True,
+                "review_payload": review_payload,
+                "thread_id": thread_id,
+            }
+
+        error = result.get("error")
+        if error:
+            raise HTTPException(detail=error, status_code=400)
+
+        return {
+            "search_results": result.get("search_results", []),
+            "total_pages": result.get("total_pages", 0),
+            "current_page": result.get("current_page", page),
+            "review_required": False,
+            "review_payload": None,
+            "thread_id": thread_id,
+        }
 
     @staticmethod
     async def upload_file(
