@@ -119,7 +119,7 @@ async def ai_search_blogs_es(
             "k": required_size,
             "num_candidates": required_size * 4,
             "filter": knn_filter,
-            "similarity": 0.25,
+            # "similarity": 0.25,
         }
 
     query = build_ai_query(

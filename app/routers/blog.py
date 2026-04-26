@@ -148,7 +148,6 @@ async def ai_search_blogs(
     if not nlq or not nlq.strip():
         return RedirectResponse("/blogs/", status_code=status.HTTP_303_SEE_OTHER)
     nlq = nlq.strip()
-
     try:
         thread_id = str(uuid.uuid4())
         result = await BlogService.ai_search_blogs(

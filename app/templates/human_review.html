@@ -6,6 +6,21 @@
             <h1 class="h4 mb-3">검색 조건 확인</h1>
             <p class="text-muted small mb-3">아래 내용을 확인한 뒤 수락 또는 거절을 선택하세요.</p>
 
+            <div class="border rounded p-3 bg-light mb-3" aria-label="교정 상태">
+                <dl class="row mb-0 small">
+                    <dt class="col-sm-3">교정 횟수</dt>
+                    <dd class="col-sm-9 mb-1">{{ revision_count | default(0) }}</dd>
+                    <dt class="col-sm-3">에러 메시지</dt>
+                    <dd class="col-sm-9 mb-0">
+                        {% if error_message %}
+                            <pre class="mb-0 small bg-white border rounded p-2">{{ error_message }}</pre>
+                        {% else %}
+                            <span class="text-muted">없음</span>
+                        {% endif %}
+                    </dd>
+                </dl>
+            </div>
+
             <div class="border rounded p-3 bg-light mb-4" aria-label="검토용 페이로드">
                 {% if review_payload is mapping %}
                     <dl class="row mb-0 small">
