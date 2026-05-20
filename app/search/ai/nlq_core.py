@@ -3,7 +3,6 @@ from functools import lru_cache
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, TypedDict
-from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
@@ -64,9 +63,8 @@ SYSTEM_PROMPT = """
 - 주제 없음 + 작성자만 있음 -> search_type = "author"
 - 주제 있음 + 작성자 있음 -> search_type = "title_content"
 - 주제 있음 + 작성자 없음 -> search_type = "title_content"
-
-{format_instructions}
 """
+
 NLQ_LLM_MODEL = "gpt-4.1-mini"
 NLQ_LLM_TEMPERATURE = 0
 
@@ -113,8 +111,6 @@ CORRECTION_PROMPT = """
 [시간 정보]
 - 현재 시간은 {current_date} 입니다.
 - 모든 날짜는 ISO 8601 형식으로 반환합니다.
-
-{format_instructions}
 """
 
 
@@ -145,7 +141,6 @@ class BlogNLQState(TypedDict, total=False):
 
 class BlogNLQ:
     def __init__(self) -> None:
-        self.parser = PydanticOutputParser(pydantic_object=ParsedAIBlogSearch)
         self.prompt = ChatPromptTemplate.from_messages(
             [("system", SYSTEM_PROMPT), ("human", "{nlq}")]
         )
@@ -153,38 +148,25 @@ class BlogNLQ:
             model_name=NLQ_LLM_MODEL,
             temperature=NLQ_LLM_TEMPERATURE,
             api_key=settings.openai_api_key,
-        )
+        ).with_structured_output(ParsedAIBlogSearch)
 
     @property
     def runnable(self) -> Runnable:
-        return (
-            self.prompt.partial(
-                format_instructions=self.parser.get_format_instructions()
-            )
-            | self.llm
-            | self.parser
-        )
+        return self.prompt | self.llm
 
 
 class BlogNLQCorrection:
     def __init__(self) -> None:
-        self.parser = PydanticOutputParser(pydantic_object=ParsedAIBlogSearch)
         self.prompt = ChatPromptTemplate.from_messages([("system", CORRECTION_PROMPT)])
         self.llm = ChatOpenAI(
             model_name=NLQ_LLM_MODEL,
             temperature=NLQ_LLM_TEMPERATURE,
             api_key=settings.openai_api_key,
-        )
+        ).with_structured_output(ParsedAIBlogSearch)
 
     @property
     def runnable(self) -> Runnable:
-        return (
-            self.prompt.partial(
-                format_instructions=self.parser.get_format_instructions()
-            )
-            | self.llm
-            | self.parser
-        )
+        return self.prompt | self.llm
 
 
 @lru_cache

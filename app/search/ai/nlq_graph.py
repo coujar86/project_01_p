@@ -70,7 +70,7 @@ async def extract_search_params(state: BlogNLQState) -> BlogNLQState:
         parsed = await blog_nlq.runnable.ainvoke(
             {"nlq": nlq, "current_date": current_date.strftime("%Y-%m-%d %H:%M:%S")}
         )
-        # logger.debug(f"[HITL] parsed generated: {parsed}")
+        logger.info(f"[HITL] parsed generated: {parsed}")
         return {**state, "parsed": parsed}
     except Exception as e:
         return {**state, "error": f"LLM 파싱 실패: {str(e)}"}
@@ -243,7 +243,7 @@ async def suggest_revision(state: BlogNLQState) -> BlogNLQState:
                 "current_date": state["current_date"].strftime("%Y-%m-%d %H:%M:%S"),
             }
         )
-        # logger.debug(f"[HITL] corrected generated: {corrected}")
+        logger.info(f"[HITL] corrected generated: {corrected}")
         # logger.debug("[HITL] corrected -> validate_result")
         return {
             **state,

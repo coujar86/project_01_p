@@ -83,7 +83,7 @@ async def debug_es_sync(
 
 @router.get("/dummy")
 async def dummy(db: AsyncSession = Depends(get_db)):
-    n = 1000
+    n = 12
     blog_ids = await create_dummies(db, n)
     if blog_ids:
         result = await db.execute(
